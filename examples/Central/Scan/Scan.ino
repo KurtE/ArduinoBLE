@@ -17,12 +17,23 @@ void setup() {
   Serial.begin(9600);
   while (!Serial);
 
+  if (CrashReport) {
+    Serial.print(CrashReport);
+    Serial.println("Paused");
+    while (Serial.read() == -1);
+    while (Serial.read() != -1);
+  }
+
+  Serial.println("Call off to BLE.begin"); Serial.flush();
+
   // begin initialization
+  BLE.debug(Serial);
   if (!BLE.begin()) {
     Serial.println("starting Bluetooth® Low Energy module failed!");
 
     while (1);
   }
+  Serial.println("After BLE.begin"); Serial.flush();
 
   Serial.println("Bluetooth® Low Energy Central scan");
 

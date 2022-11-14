@@ -18,7 +18,8 @@
 */
 
 #if !defined(ARDUINO_ARCH_MBED) && !defined(ESP32) && !defined(ARDUINO_SILABS) && !defined(ARDUINO_UNOR4_WIFI) || defined(TARGET_NANO_RP2040_CONNECT) //|| defined(CORE_CM4)
-
+#if !defined(ARDUINO_ARCH_MBED) && !defined(ESP32) || defined(TARGET_NANO_RP2040_CONNECT)
+#if !(defined(TEENSYDUINO) && (__IMXRT1062__) || (ARDUINO_TEENSY36))
 #include "HCIUartTransport.h"
 
 #if defined(ARDUINO_SAMD_MKRWIFI1010) || defined(ARDUINO_AVR_UNO_WIFI_REV2)
@@ -35,6 +36,8 @@
 #define SerialHCI Serial5
 #elif defined(ARDUINO_GIGA)
 arduino::UART SerialHCI(CYBSP_BT_UART_TX, CYBSP_BT_UART_RX, CYBSP_BT_UART_RTS, CYBSP_BT_UART_CTS);
+#elif defined(ARDUINO_TEENSY_MICROMOD) || defined(ARDUINO_TEENSY41)
+#define SerialHCI Serial7 // this is wrong
 #else
 #error "Unsupported board selected!"
 #endif
@@ -106,4 +109,5 @@ HCIUartTransportClass HCIUartTransport(SerialHCI, 912600);
 #endif
 HCITransportInterface& HCITransport = HCIUartTransport;
 
+#endif // teensy
 #endif
