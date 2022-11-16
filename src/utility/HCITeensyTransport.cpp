@@ -21,7 +21,7 @@
 
 #include "HCITeensyTransport.h"
 
-#define DEBUG_BT
+//#define DEBUG_BT
 #define DEBUG_BT_VERBOSE
 
 #ifndef DEBUG_BT
@@ -278,13 +278,25 @@ void HCITeensyTransportClass::rx_data(const Transfer_t *transfer)
 void HCITeensyTransportClass::rx2_data(const Transfer_t *transfer)
 {
   uint32_t len = transfer->length - ((transfer->qtd.token >> 16) & 0x7FFF);
-  DBGPrintf("<<(BULK, %u):", (uint32_t)em_rx_tx2);
+  DBGPrintf("<<(ACLDATA, %u):", (uint32_t)em_rx_tx2);
   em_rx_tx2 = 0;
   uint8_t *buffer = (uint8_t*)transfer->buffer;
   for (uint8_t i = 0; i < len; i++) DBGPrintf("%02X ", buffer[i]);
   DBGPrintf("\n");
 
   // Not sure what to do with it now...
+  // 40 20 07 00 03 00 04 00 03 12 00 
+  if (len > 0) { 
+    // bugbug should check for failure
+    // Add EVENT indicator at beginning of each event
+    // Not sure yet if these split up or not.  Assume not for start
+    add_to_rxring(HCI_ACLDATA_PKT);
+    rx2_packet_data_remaining_ = rxbuf_[1] + 2;  // length of data plus the two bytes at start...
+    for (uint8_t i = 0; i < len; i++) add_to_rxring(buffer[i]);
+  }
+
+  queue_Data_Transfer(rx2pipe_, rx2buf_, rx2_size_, this);
+
 }
 
 void HCITeensyTransportClass::tx_data(const Transfer_t *transfer)
@@ -352,6 +364,18 @@ size_t HCITeensyTransportClass::write(const uint8_t* data, size_t length)
     mk_setup(setup, 0x20, 0x0, 0, 0, length);
     queue_Control_Transfer(device, &setup, txbuf_, this);
     return length+1;
+  } else if (data[0] == HCI_ACLDATA_PKT) {
+
+    // This should go to the BULK end point
+    length--;
+    memcpy(txbuf_, data + 1, length);
+    DBGPrintf(">>(ACLDATA, %u):", (uint32_t)em_rx_tx);
+    em_rx_tx = 0;
+    for (uint8_t i = 0; i < length; i++) DBGPrintf("%02X ", txbuf_[i]);
+    DBGPrintf("\n");
+    queue_Data_Transfer(txpipe_, txbuf_, length, this);
+    return length+1;
+
   }
   return 0;
 }

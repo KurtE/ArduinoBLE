@@ -20,7 +20,17 @@ void setup() {
   Serial.begin(9600);
   while (!Serial);
 
+#ifdef __IMXRT1062__
+  if (CrashReport) {
+    Serial.print(CrashReport);
+    Serial.println("Paused");
+    while (Serial.read() == -1);
+    while (Serial.read() != -1);
+  }
+#endif
+
   // begin initialization
+  //BLE.debug(Serial);
   if (!BLE.begin()) {
     Serial.println("starting Bluetooth® Low Energy module failed!");
 

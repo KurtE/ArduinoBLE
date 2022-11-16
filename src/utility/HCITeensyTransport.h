@@ -77,6 +77,7 @@ public:
   volatile uint16_t        rx_ring_tail_ = 0;
 
   uint8_t         rx_packet_data_remaining_ = 0; // how much data remaining
+  uint8_t         rx2_packet_data_remaining_ = 0; // how much data remaining
   uint8_t         txbuf_[256];    // buffer to use to send commands to bluetooth
   uint8_t         rx2buf_[64];    // receive buffer from Bulk end point
   uint8_t         rx2buf2_[256];   // receive buffer from Bulk end point
