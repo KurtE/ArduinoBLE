@@ -21,7 +21,7 @@
 
 #include "HCITeensyTransport.h"
 
-//#define DEBUG_BT
+#define DEBUG_BT
 #define DEBUG_BT_VERBOSE
 
 #ifndef DEBUG_BT
@@ -275,6 +275,210 @@ void HCITeensyTransportClass::rx_data(const Transfer_t *transfer)
   queue_Data_Transfer(rxpipe_, rxbuf_, rx_size_, this);
 }
 
+#define ATT_OP_ERROR              0x01
+#define ATT_OP_MTU_REQ            0x02
+#define ATT_OP_MTU_RESP           0x03
+#define ATT_OP_FIND_INFO_REQ      0x04
+#define ATT_OP_FIND_INFO_RESP     0x05
+#define ATT_OP_FIND_BY_TYPE_REQ   0x06
+#define ATT_OP_FIND_BY_TYPE_RESP  0x07
+#define ATT_OP_READ_BY_TYPE_REQ   0x08
+#define ATT_OP_READ_BY_TYPE_RESP  0x09
+#define ATT_OP_READ_REQ           0x0a
+#define ATT_OP_READ_RESP          0x0b
+#define ATT_OP_READ_BLOB_REQ      0x0c
+#define ATT_OP_READ_BLOB_RESP     0x0d
+#define ATT_OP_READ_MULTI_REQ     0x0e
+#define ATT_OP_READ_MULTI_RESP    0x0f
+#define ATT_OP_READ_BY_GROUP_REQ  0x10
+#define ATT_OP_READ_BY_GROUP_RESP 0x11
+#define ATT_OP_WRITE_REQ          0x12
+#define ATT_OP_WRITE_RESP         0x13
+#define ATT_OP_WRITE_CMD          0x52
+#define ATT_OP_PREP_WRITE_REQ     0x16
+#define ATT_OP_PREP_WRITE_RESP    0x17
+#define ATT_OP_EXEC_WRITE_REQ     0x18
+#define ATT_OP_EXEC_WRITE_RESP    0x19
+#define ATT_OP_HANDLE_NOTIFY      0x1b
+#define ATT_OP_HANDLE_IND         0x1d
+#define ATT_OP_HANDLE_CNF         0x1e
+#define ATT_OP_SIGNED_WRITE_CMD   0xd2
+
+#define ATT_ECODE_INVALID_HANDLE       0x01
+#define ATT_ECODE_READ_NOT_PERM        0x02
+#define ATT_ECODE_WRITE_NOT_PERM       0x03
+#define ATT_ECODE_INVALID_PDU          0x04
+#define ATT_ECODE_AUTHENTICATION       0x05
+#define ATT_ECODE_REQ_NOT_SUPP         0x06
+#define ATT_ECODE_INVALID_OFFSET       0x07
+#define ATT_ECODE_AUTHORIZATION        0x08
+#define ATT_ECODE_PREP_QUEUE_FULL      0x09
+#define ATT_ECODE_ATTR_NOT_FOUND       0x0a
+#define ATT_ECODE_ATTR_NOT_LONG        0x0b
+#define ATT_ECODE_INSUFF_ENCR_KEY_SIZE 0x0c
+#define ATT_ECODE_INVAL_ATTR_VALUE_LEN 0x0d
+#define ATT_ECODE_UNLIKELY             0x0e
+#define ATT_ECODE_INSUFF_ENC           0x0f
+#define ATT_ECODE_UNSUPP_GRP_TYPE      0x10
+#define ATT_ECODE_INSUFF_RESOURCES     0x11
+
+void decode_att_data(const uint8_t *data) {
+#ifdef DEBUG_BT
+  //                 0  1  2  3  4  5  6  7 MT
+  //>>(ACLDATA, 26):40 00 0B 00 07 00 04 00 10 01 00 FF FF 00 28 
+  //<<(ACLDATA, 30):40 20 12 00 0E 00 04 00 11 06 01 00 07 00 00 18 08 00 08 00 01 18 
+  //>>(ACLDATA, 14):40 00 0B 00 07 00 04 00 10 09 00 FF FF 00 28 
+  //<<(ACLDATA, 30):40 20 12 00 0E 00 04 00 11 06 09 00 11 00 0A 18 12 00 15 00 0F 18 
+  //>>(ACLDATA, 30):40 00 0B 00 07 00 04 00 10 16 00 FF FF 00 28 
+  //<<(ACLDATA, 30):40 20 0C 00 08 00 04 00 11 06 16 00 23 00 12 18 
+  //>>(ACLDATA, 14):40 00 0B 00 07 00 04 00 10 24 00 FF FF 00 28 
+  //<<(ACLDATA, 30):40 20 09 00 05 00 04 00 01 10 24 00 80 
+  //>>(ACLDATA, 14):40 00 09 00 05 00 04 00 04 04 00 05 00 
+
+  uint16_t data_len = data[4] + (data[5] << 8);
+  uint8_t mtu = data[8];
+  switch (mtu) {
+    case ATT_OP_ERROR:
+      //                 0  1  2  3  4  5  6  7  8  9 10 11 12
+      //<<(ACLDATA, 30):40 20 09 00 05 00 04 00 01 10 24 00 80 
+      DBGPrintf("\t** ATT_ERROR **: OP:%x handle:%x error:%02x ", data[9], data[10] + (data[11] << 8), data[12]);
+      switch (data[12]) {
+        case ATT_ECODE_INVALID_HANDLE: DBGPrintf("- INVALID_HANDLE\n"); break;
+        case ATT_ECODE_READ_NOT_PERM: DBGPrintf("- READ_NOT_PERM\n"); break;
+        case ATT_ECODE_WRITE_NOT_PERM: DBGPrintf("- WRITE_NOT_PERM\n"); break;
+        case ATT_ECODE_INVALID_PDU: DBGPrintf("- INVALID_PDU\n"); break;
+        case ATT_ECODE_AUTHENTICATION: DBGPrintf("- AUTHENTICATION\n"); break;
+        case ATT_ECODE_REQ_NOT_SUPP: DBGPrintf("- REQ_NOT_SUPP\n"); break;
+        case ATT_ECODE_INVALID_OFFSET: DBGPrintf("- INVALID_OFFSET\n"); break;
+        case ATT_ECODE_AUTHORIZATION: DBGPrintf("- AUTHORIZATION\n"); break;
+        case ATT_ECODE_PREP_QUEUE_FULL: DBGPrintf("- PREP_QUEUE_FULL\n"); break;
+        case ATT_ECODE_ATTR_NOT_FOUND: DBGPrintf("- ATTR_NOT_FOUND\n"); break;
+        case ATT_ECODE_ATTR_NOT_LONG: DBGPrintf("- ATTR_NOT_LONG\n"); break;
+        case ATT_ECODE_INSUFF_ENCR_KEY_SIZE: DBGPrintf("- INSUFF_ENCR_KEY_SIZE\n"); break;
+        case ATT_ECODE_INVAL_ATTR_VALUE_LEN: DBGPrintf("- INVAL_ATTR_VALUE_LEN\n"); break;
+        case ATT_ECODE_UNLIKELY: DBGPrintf("- UNLIKELY\n"); break;
+        case ATT_ECODE_INSUFF_ENC: DBGPrintf("- INSUFF_ENC\n"); break;
+        case ATT_ECODE_UNSUPP_GRP_TYPE: DBGPrintf("- UNSUPP_GRP_TYPE\n"); break;
+        case ATT_ECODE_INSUFF_RESOURCES: DBGPrintf("- INSUFF_RESOURCES\n"); break;
+        default: DBGPrintf("\n");
+      }
+      break;
+    case ATT_OP_MTU_REQ:
+      DBGPrintf("\t** MTU_REQ **: MTU: %x\n", data[9] + (data[10] << 8));
+      break;
+    case ATT_OP_MTU_RESP:
+      DBGPrintf("\t** MTU_RESP **: MTU: %x\n", data[9] + (data[10] << 8));
+      break;
+    case ATT_OP_FIND_INFO_REQ:
+      //>>(ACLDATA, 14):40 00 09 00 05 00 04 00 04 04 00 05 00 
+      DBGPrintf("\t** FIND_INFO_REQ **: Starting handle:%04x ending handle:%04x\n", data[9] + (data[10] << 8), data[11] + (data[12] << 8));
+      break;
+    case ATT_OP_FIND_INFO_RESP:
+      //<<(ACLDATA, 30):40 20 0A 00 06 00 04 00 05 01 04 00 03 28 
+      DBGPrintf("\t** FIND_INFO_RESP **: Format:%x\n", data[9]);
+      {
+        uint8_t i = 10;
+        while (i < (data_len + 8)) {
+          if (data[9] == 1) {
+            DBGPrintf("\t\tHandle:%02x UUID:%04x\n", data[i] + (data[i+1] << 8), data[2] + (data[i+3] << 8));
+            i += 4;
+          } else {
+            DBGPrintf("\t\tHandle:%x UUID:", data[i] + (data[i+1] << 8));
+            i += 2;
+            for (uint8_t j = 0; j < 16; j++) DBGPrintf("%02x", data[i++]);
+            DBGPrintf("\n");
+          }
+        }
+      }
+      break;
+    case ATT_OP_FIND_BY_TYPE_REQ:
+      DBGPrintf("\t** FIND_BY_TYPE_REQ **:");
+      break;
+    case ATT_OP_FIND_BY_TYPE_RESP:
+      DBGPrintf("\t** FIND_BY_TYPE_RESP **:");
+      break;
+
+    case ATT_OP_READ_BY_TYPE_REQ:
+      //                 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
+      //>>(ACLDATA, 45):40 00 0B 00 07 00 04 00 08 01 00 07 00 03 28 
+      DBGPrintf("\t** READ_BY_TYPE_REQ **: Starting handle:%04x ending handle:%04x Attribute Type:", data[9] + (data[10] << 8), data[11] + (data[12] << 8));
+      if (data_len == 7) DBGPrintf("%04x\n", data[13] + (data[14] << 8)); 
+      else {
+        for (uint8_t i = 0; i < 16; i++) DBGPrintf("%02x\n", data[13+i]);
+        DBGPrintf("\n");
+      }
+      break;
+
+    case ATT_OP_READ_BY_TYPE_RESP:
+      //                 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 
+      //<<(ACLDATA, 30):40 20 14 00 10 00 04 00 09 07 02 00 02 03 00 00 2A 04 00 02 05 00 01 2A 
+      DBGPrintf("\t** READ_BY_TYPE_RESP **: len per:%02x\n", data[9]);
+      {
+        uint8_t i = 10;
+        while (i < (data_len + 8)) {
+          DBGPrintf("\t\tAtr Handle:%04x Data:", data[i] + (data[i+1] << 8));
+          i += 2;
+          for (uint8_t j = 2; j < data[9]; j++) DBGPrintf(" %02x", data[i++]);
+          DBGPrintf("\n");
+        }
+      }
+      break;
+
+    case ATT_OP_READ_REQ:
+      DBGPrintf("\t** READ_REQ **:");
+      break;
+    case ATT_OP_READ_RESP:
+      DBGPrintf("\t** READ_RESP **:");
+      break;
+    case ATT_OP_READ_BLOB_REQ:
+      DBGPrintf("\t** READ_BLOB_REQ **:");
+      break;
+    case ATT_OP_READ_BLOB_RESP:
+      DBGPrintf("\t** READ_BLOB_RESP **:");
+      break;
+    case ATT_OP_READ_MULTI_REQ:
+      DBGPrintf("\t** READ_MULTI_REQ **:");
+      break;
+    case ATT_OP_READ_MULTI_RESP:
+      DBGPrintf("\t** READ_MULTI_RESP **:");
+      break;
+
+    case ATT_OP_READ_BY_GROUP_REQ:
+      //>>(ACLDATA, 26):40 00 0B 00 07 00 04 00 10 01 00 FF FF 00 28 
+      DBGPrintf("\t** READ_BY_GROUP_REQ **: Starting handle:%04x ending handle:%04x Group Type:", data[9] + (data[10] << 8), data[11] + (data[12] << 8));
+      if (data_len == 7) DBGPrintf("%04x\n", data[13] + (data[14] << 8)); 
+      else {
+        for (uint8_t i = 0; i < 16; i++) DBGPrintf("%02x\n", data[13+i]);
+        DBGPrintf("\n");
+      }
+      break;
+
+    case ATT_OP_READ_BY_GROUP_RESP:
+      //                 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21
+      //<<(ACLDATA, 30):40 20 12 00 0E 00 04 00 11 06 01 00 07 00 00 18 08 00 08 00 01 18 
+      DBGPrintf("\t** READ_MULTI_RESP **: len per:%02x\n", data[9]);
+      {
+        uint8_t i = 10;
+        while (i < (data_len + 8)) {
+          DBGPrintf("\t\tAtr Handle:%04x End Group Handle:%04x Data:", data[i] + (data[i+1] << 8), data[2] + (data[i+3] << 8));
+          i += 4;
+          for (uint8_t j = 4; j < data[9]; j++) DBGPrintf(" %02x", data[i++]);
+          DBGPrintf("\n");
+        }
+      }
+      break;
+    default: 
+      //                 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21
+      //<<(ACLDATA, 30):40 20 12 00 0E 00 04 00 11 06 01 00 07 00 00 18 08 00 08 00 01 18 
+      DBGPrintf("\t** ??? %0xx ??? **: len per:%02x\n", mtu);
+      break;
+  }
+
+
+#endif
+}
+
+
 void HCITeensyTransportClass::rx2_data(const Transfer_t *transfer)
 {
   uint32_t len = transfer->length - ((transfer->qtd.token >> 16) & 0x7FFF);
@@ -283,7 +487,7 @@ void HCITeensyTransportClass::rx2_data(const Transfer_t *transfer)
   uint8_t *buffer = (uint8_t*)transfer->buffer;
   for (uint8_t i = 0; i < len; i++) DBGPrintf("%02X ", buffer[i]);
   DBGPrintf("\n");
-
+  decode_att_data(buffer);
   // Not sure what to do with it now...
   // 40 20 07 00 03 00 04 00 03 12 00 
   if (len > 0) { 
@@ -373,6 +577,7 @@ size_t HCITeensyTransportClass::write(const uint8_t* data, size_t length)
     em_rx_tx = 0;
     for (uint8_t i = 0; i < length; i++) DBGPrintf("%02X ", txbuf_[i]);
     DBGPrintf("\n");
+    decode_att_data(txbuf_);
     queue_Data_Transfer(txpipe_, txbuf_, length, this);
     return length+1;
 

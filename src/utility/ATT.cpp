@@ -160,15 +160,18 @@ bool ATTClass::disconnect(uint8_t peerBdaddrType, uint8_t peerBdaddr[6])
 
 bool ATTClass::discoverAttributes(uint8_t peerBdaddrType, uint8_t peerBdaddr[6], const char* serviceUuidFilter)
 {
+  Serial.printf("ATTClass::discoverAttributes(%u, %p, %p)\n", peerBdaddrType, peerBdaddr, serviceUuidFilter);
   uint16_t connHandle = connectionHandle(peerBdaddrType, peerBdaddr);
   if (connHandle == 0xffff) {
     return false;
   }
+  Serial.println("\tAfter connectionHandle");
 
   // send MTU request
   if (!exchangeMtu(connHandle)) {
     return false;
   }
+  Serial.println("\tAfter exchangeMtu");
 
   // find the device entry for the peeer
   BLERemoteDevice* device = NULL;
@@ -206,19 +209,23 @@ bool ATTClass::discoverAttributes(uint8_t peerBdaddrType, uint8_t peerBdaddr[6],
   }
 
   // discover services
+  Serial.println("\tBefore discoverServices");
   if (!discoverServices(connHandle, device, serviceUuidFilter)) {
     return false;
   }
+  Serial.println("\tAfter discoverServices");
 
   // discover characteristics
   if (!discoverCharacteristics(connHandle, device)) {
     return false;
   }
+  Serial.println("\tAfter discoverCharacteristics");
 
   // discover descriptors
   if (!discoverDescriptors(connHandle, device)) {
     return false;
   }
+  Serial.println("\tAfter discoverDescriptors");
 
   return true;
 }
@@ -805,6 +812,7 @@ int ATTClass::findInfoReq(uint16_t connectionHandle, uint16_t startHandle, uint1
     uint16_t endHandle;
   } findInfoReq = { ATT_OP_FIND_INFO_REQ, startHandle, endHandle };
 
+  Serial.printf("ATTClass::findInfoReq(%u, %u, %u, %p)\n", connectionHandle, startHandle, endHandle, responseBuffer);
   return sendReq(connectionHandle, &findInfoReq, sizeof(findInfoReq), responseBuffer);
 }
 
@@ -1695,12 +1703,14 @@ bool ATTClass::discoverCharacteristics(uint16_t connectionHandle, BLERemoteDevic
 
 bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* device)
 {
+  Serial.printf("ATTClass::discoverDescriptors(%u, %p)\n", connectionHandle, device);
   uint16_t reqStartHandle = 0x0001;
   uint16_t reqEndHandle = 0xffff;
 
   uint8_t responseBuffer[_maxMtu];
 
   int serviceCount = device->serviceCount();  
+  Serial.printf("\tService Count:%u\n", serviceCount);
 
   for (int i = 0; i < serviceCount; i++) {
     BLERemoteService* service = device->service(i);
@@ -1709,6 +1719,7 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
 
     int characteristicCount = service->characteristicCount();
 
+    Serial.printf("\t%u Service: %s #characteristic:%u\n", i, service->uuid(), characteristicCount);
     for (int j = 0; j < characteristicCount; j++) {
       BLERemoteCharacteristic* characteristic = service->characteristic(j);
       BLERemoteCharacteristic* nextCharacteristic = (j == (characteristicCount - 1)) ? NULL : service->characteristic(j + 1);
@@ -1716,6 +1727,8 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
       reqStartHandle = characteristic->valueHandle() + 1;
       reqEndHandle = nextCharacteristic ? nextCharacteristic->valueHandle() : serviceEndHandle;
 
+      Serial.printf("\t(%d, %d) characteristic: %s %p, range: %u %u\n", i, j, characteristic->uuid(), nextCharacteristic, reqStartHandle, reqEndHandle);
+  
       if (reqStartHandle > reqEndHandle) {
         continue;
       }
@@ -1723,6 +1736,7 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
       while (1) {
         int respLength = findInfoReq(connectionHandle, reqStartHandle, reqEndHandle, responseBuffer);
 
+        Serial.printf("\t%u %u respLength:%u\n", i, j, respLength);
         if (respLength == 0) {
           return false;
         }
@@ -1731,16 +1745,17 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
           uint16_t lengthPerDescriptor = responseBuffer[1] * 4;
           uint8_t uuidLen = 2;
 
-          for (int i = 2; i < respLength; i += lengthPerDescriptor) {
+          for (int k = 2; k < respLength; k += lengthPerDescriptor) {
             struct __attribute__ ((packed)) RawDescriptor {
               uint16_t handle;
               uint8_t uuid[16];
-            } *rawDescriptor = (RawDescriptor*)&responseBuffer[i];
+            } *rawDescriptor = (RawDescriptor*)&responseBuffer[k];
 
             BLERemoteDescriptor* descriptor = new BLERemoteDescriptor(rawDescriptor->uuid, uuidLen,
                                                                       connectionHandle,
                                                                       rawDescriptor->handle);
 
+            Serial.printf("\t%u %u %u descriptor:%p\n", i, j, k, descriptor);
             if (descriptor == NULL) {
               return false;
             }
@@ -1766,6 +1781,7 @@ int ATTClass::sendReq(uint16_t connectionHandle, void* requestBuffer, int reques
   _pendingResp.buffer = responseBuffer;
   _pendingResp.length = 0;
 
+  Serial.printf("ATTClass::sendReq(%u, %p(%x), %u, %p)\n", connectionHandle, requestBuffer, *((uint8_t*)requestBuffer), requestLength, responseBuffer);
   HCI.sendAclPkt(connectionHandle, ATT_CID, requestLength, requestBuffer);
 
   if (responseBuffer == NULL) {
