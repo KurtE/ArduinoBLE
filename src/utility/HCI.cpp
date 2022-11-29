@@ -279,6 +279,7 @@ int HCIClass::readLeBufferSize(uint16_t& pktLen, uint8_t& maxPkt)
 {
   int result = sendCommand(OGF_LE_CTL << 10 | OCF_LE_READ_BUFFER_SIZE);
 
+  Serial.println("HCIClass::readLeBufferSize called");
   if (result == 0) {
     struct __attribute__ ((packed)) HCILeBufferSize {
       uint16_t pktLen;
@@ -288,8 +289,15 @@ int HCIClass::readLeBufferSize(uint16_t& pktLen, uint8_t& maxPkt)
     pktLen = leBufferSize->pktLen;
     _maxPkt = maxPkt = leBufferSize->maxPkt;
 
-#ifndef __AVR__
-    ATT.setMaxMtu(pktLen - 9); // max pkt len - ACL header size
+#ifdef _BLE_TRACE_
+  Serial.print("\tpktlen: ");
+  Serial.print(pktLen, DEC);
+  Serial.print(" maxPkt: ");
+  Serial.println(maxPkt, DEC);
+#endif
+
+#if (defined(TEENSYDUINO) && (__IMXRT1062__) || (ARDUINO_TEENSY36)) || !defined(__AVR__)
+    ATT.setMaxMtu(pktLen/* - 9*/); // max pkt len - ACL header size
 #endif
   }
 

@@ -21,8 +21,8 @@
 
 #include "HCITeensyTransport.h"
 
-#define DEBUG_BT
-#define DEBUG_BT_VERBOSE
+//#define DEBUG_BT
+//#define DEBUG_BT_VERBOSE
 
 #ifndef DEBUG_BT
 #undef DEBUG_BT_VERBOSE

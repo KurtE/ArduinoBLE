@@ -62,7 +62,9 @@ void loop() {
     Serial.println();
 
     // see if peripheral is a LED
-    if (peripheral.localName() == "Xbox Wireless Controller") {
+    static const char device_name[] = "Xbox Wireless Controller";
+    //static const char device_name[] = "Surface Arc Mouse";
+    if (peripheral.localName() == device_name) {
       // stop scanning
       BLE.stopScan();
 

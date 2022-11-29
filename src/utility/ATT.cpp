@@ -19,6 +19,26 @@
 
 #include <Arduino.h>
 
+//#define DEBUG_ATT
+#ifdef DEBUG_ATT
+  #ifdef TEENSYDUINO
+    #define DBGPrintf Serial.printf
+  #else 
+  #include <stdio.h>
+  #include <stdarg.h>
+  void DBGPrintf(const char *format, ...) {
+    va_list    args;
+    char str[100];
+    va_start(args, format);
+    vsnprintf(str, sizeof(str), format, args);
+    va_end(args);
+    Serial.print(str);
+  }
+  #endif
+#else
+  #define DBGPrintf(...)
+#endif
+
 #include "HCI.h"
 #include "GATT.h"
 
@@ -160,18 +180,18 @@ bool ATTClass::disconnect(uint8_t peerBdaddrType, uint8_t peerBdaddr[6])
 
 bool ATTClass::discoverAttributes(uint8_t peerBdaddrType, uint8_t peerBdaddr[6], const char* serviceUuidFilter)
 {
-  Serial.printf("ATTClass::discoverAttributes(%u, %p, %p)\n", peerBdaddrType, peerBdaddr, serviceUuidFilter);
+  DBGPrintf("ATTClass::discoverAttributes(%u, %p, %p)\n", peerBdaddrType, peerBdaddr, serviceUuidFilter);
   uint16_t connHandle = connectionHandle(peerBdaddrType, peerBdaddr);
   if (connHandle == 0xffff) {
     return false;
   }
-  Serial.println("\tAfter connectionHandle");
+  DBGPrintf("\tAfter connectionHandle\n");
 
   // send MTU request
   if (!exchangeMtu(connHandle)) {
     return false;
   }
-  Serial.println("\tAfter exchangeMtu");
+  DBGPrintf("\tAfter exchangeMtu\n");
 
   // find the device entry for the peeer
   BLERemoteDevice* device = NULL;
@@ -209,23 +229,23 @@ bool ATTClass::discoverAttributes(uint8_t peerBdaddrType, uint8_t peerBdaddr[6],
   }
 
   // discover services
-  Serial.println("\tBefore discoverServices");
+  DBGPrintf("\tBefore discoverServices\n");
   if (!discoverServices(connHandle, device, serviceUuidFilter)) {
     return false;
   }
-  Serial.println("\tAfter discoverServices");
+  DBGPrintf("\tAfter discoverServices\n");
 
   // discover characteristics
   if (!discoverCharacteristics(connHandle, device)) {
     return false;
   }
-  Serial.println("\tAfter discoverCharacteristics");
+  DBGPrintf("\tAfter discoverCharacteristics\n");
 
   // discover descriptors
   if (!discoverDescriptors(connHandle, device)) {
     return false;
   }
-  Serial.println("\tAfter discoverDescriptors");
+  DBGPrintf("\tAfter discoverDescriptors\n");
 
   return true;
 }
@@ -812,7 +832,7 @@ int ATTClass::findInfoReq(uint16_t connectionHandle, uint16_t startHandle, uint1
     uint16_t endHandle;
   } findInfoReq = { ATT_OP_FIND_INFO_REQ, startHandle, endHandle };
 
-  Serial.printf("ATTClass::findInfoReq(%u, %u, %u, %p)\n", connectionHandle, startHandle, endHandle, responseBuffer);
+  DBGPrintf("ATTClass::findInfoReq(%u, %u, %u, %p)\n", connectionHandle, startHandle, endHandle, responseBuffer);
   return sendReq(connectionHandle, &findInfoReq, sizeof(findInfoReq), responseBuffer);
 }
 
@@ -1603,7 +1623,7 @@ bool ATTClass::discoverServices(uint16_t connectionHandle, BLERemoteDevice* devi
     if (respLength == 0) {
       return false;
     }
-
+    DBGPrintf("\t(discoverServices) MaxMTU:%d RespLength:%d : %02x %02x\n", _maxMtu, respLength, responseBuffer[0], responseBuffer[1]);
     if (responseBuffer[0] == ATT_OP_READ_BY_GROUP_RESP) {
       uint16_t lengthPerService = responseBuffer[1];
       uint8_t uuidLen = lengthPerService - 4;
@@ -1703,15 +1723,117 @@ bool ATTClass::discoverCharacteristics(uint16_t connectionHandle, BLERemoteDevic
 
 bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* device)
 {
-  Serial.printf("ATTClass::discoverDescriptors(%u, %p)\n", connectionHandle, device);
+  DBGPrintf("ATTClass::discoverDescriptors(%u, %p)\n", connectionHandle, device);
   uint16_t reqStartHandle = 0x0001;
   uint16_t reqEndHandle = 0xffff;
 
   uint8_t responseBuffer[_maxMtu];
 
   int serviceCount = device->serviceCount();  
-  Serial.printf("\tService Count:%u\n", serviceCount);
+  DBGPrintf("\tService Count:%u\n", serviceCount);
+  #if 1
+  // Lets print out the information we know:
+  DBGPrintf("****************** Service characteristic list ******************\n");
+  for (int i = 0; i < serviceCount; i++) {
+    BLERemoteService* service = device->service(i);
+    DBGPrintf("Service(%u): UUID: %s Handle Range: %02x %02x\n", i, service->uuid(), 
+          service->startHandle(), service->endHandle());
+    int characteristicCount = service->characteristicCount();
 
+    for (int j = 0; j < characteristicCount; j++) {
+      BLERemoteCharacteristic* characteristic = service->characteristic(j);
+      DBGPrintf("\tcharacteristic(%u): UUID: %s Handle Range: %02x %02x\n", j, characteristic->uuid(), 
+            characteristic->startHandle(), characteristic->valueHandle());
+    }
+  }
+  DBGPrintf("****************** end ******************\n");
+
+
+  #endif
+
+#if 1
+  // lets try to simple do one while (1) loop for all of the attributes within the range of the service
+  for (int i = 0; i < serviceCount; i++) {
+    BLERemoteService* service = device->service(i);
+
+    if (service == nullptr) {
+      DBGPrintf("$$$ discoverDescriptors: %i service is NULL\n", i);
+      continue;      
+    }
+
+    reqStartHandle =service->startHandle() + 1;
+    reqEndHandle =  service->endHandle();
+    int characteristicCount = service->characteristicCount();
+    if (characteristicCount == 0) continue; // this service does not have any
+    int characteristicindex = 1;  
+
+    BLERemoteCharacteristic* characteristic = service->characteristic(0);
+    BLERemoteCharacteristic* nextCharacteristic = (characteristicCount == 1) ? NULL : service->characteristic(1);
+    uint16_t nextCharacteristic_starting_handle = nextCharacteristic ? nextCharacteristic->startHandle() : reqEndHandle + 1;
+
+    while (reqStartHandle <= reqEndHandle) {
+
+        int respLength = findInfoReq(connectionHandle, reqStartHandle, reqEndHandle, responseBuffer);
+
+        DBGPrintf("\t%u  respLength:%u\n", i, respLength);
+        if (respLength == 0) {
+          // bug bug, what happens if I ignore it and break?
+          break;
+          //return false;
+        }
+
+        DBGPrintf("\t%u responseBuffer[0]:%u ==? %u\n", i, responseBuffer[0], ATT_OP_FIND_INFO_RESP);
+        if (responseBuffer[0] == ATT_OP_FIND_INFO_RESP) {
+          //
+          // Format parameter (responseBuffer[1]) either 0x01 - 16-bit Bluetooth UUID(s), or 0x02 - 128 bit UUID(s)
+          //
+          // Therefore for:
+          //   0x01 - uuidLen = 2 (octets)
+          //          lengthPerDescriptor = 4 (Handle 2 octets + UUID 2 octets)
+          //   0x02 - uuidLen = 16 (octets)
+          //          lengthPerDescriptor = 18 (Handle 2 octets + UUID 16 octets)
+          //
+          // See section 3.4.3.2 ATT_FIND_INFORMATION_RSP of Bluetooth Core Specification 5.3.
+          //
+          uint8_t uuidLen = responseBuffer[1] == 1 ? 2 : 16;
+          uint16_t lengthPerDescriptor = uuidLen + 2;
+
+          for (int k = 2; k < respLength; k += lengthPerDescriptor) {
+            struct __attribute__ ((packed)) RawDescriptor {
+              uint16_t handle;
+              uint8_t uuid[16];
+            } *rawDescriptor = (RawDescriptor*)&responseBuffer[k];
+
+            BLERemoteDescriptor* descriptor = new BLERemoteDescriptor(rawDescriptor->uuid, uuidLen,
+                                                                      connectionHandle,
+                                                                      rawDescriptor->handle);
+
+            DBGPrintf("\t%u %u handle:%02x descriptor:%p\n", i, k, rawDescriptor->handle, descriptor);
+            if (descriptor == NULL) {
+              return false;
+            }
+
+            // Now make sure we add this to the right characteristic
+            while (rawDescriptor->handle >= nextCharacteristic_starting_handle) {
+              if (nextCharacteristic == nullptr) return false; // should not happen
+              DBGPrintf("\t%02x >= %02x - advance to next characteristic %u\n", rawDescriptor->handle, nextCharacteristic_starting_handle, characteristicindex);
+              characteristicindex++;
+              characteristic = nextCharacteristic;
+              nextCharacteristic = (characteristicindex >= characteristicCount) ? NULL : service->characteristic(characteristicindex);
+              if (nextCharacteristic) nextCharacteristic_starting_handle = nextCharacteristic->startHandle();
+              else nextCharacteristic_starting_handle = (reqEndHandle != 0xffff)? reqEndHandle + 1 : 0xffff;
+            }
+
+            characteristic->addDescriptor(descriptor);
+
+            reqStartHandle = rawDescriptor->handle + 1;
+          }
+        } else {
+          break;
+        }
+      }
+    }
+#else  
   for (int i = 0; i < serviceCount; i++) {
     BLERemoteService* service = device->service(i);
 
@@ -1719,7 +1841,7 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
 
     int characteristicCount = service->characteristicCount();
 
-    Serial.printf("\t%u Service: %s #characteristic:%u\n", i, service->uuid(), characteristicCount);
+    DBGPrintf("\t%u Service: %s #characteristic:%u\n", i, service->uuid(), characteristicCount);
     for (int j = 0; j < characteristicCount; j++) {
       BLERemoteCharacteristic* characteristic = service->characteristic(j);
       BLERemoteCharacteristic* nextCharacteristic = (j == (characteristicCount - 1)) ? NULL : service->characteristic(j + 1);
@@ -1727,7 +1849,7 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
       reqStartHandle = characteristic->valueHandle() + 1;
       reqEndHandle = nextCharacteristic ? nextCharacteristic->valueHandle() : serviceEndHandle;
 
-      Serial.printf("\t(%d, %d) characteristic: %s %p, range: %u %u\n", i, j, characteristic->uuid(), nextCharacteristic, reqStartHandle, reqEndHandle);
+      DBGPrintf("\t(%d, %d) characteristic: %s %p, range: %u %u\n", i, j, characteristic->uuid(), nextCharacteristic, reqStartHandle, reqEndHandle);
   
       if (reqStartHandle > reqEndHandle) {
         continue;
@@ -1736,11 +1858,14 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
       while (1) {
         int respLength = findInfoReq(connectionHandle, reqStartHandle, reqEndHandle, responseBuffer);
 
-        Serial.printf("\t%u %u respLength:%u\n", i, j, respLength);
+        DBGPrintf("\t%u %u respLength:%u\n", i, j, respLength);
         if (respLength == 0) {
-          return false;
+          // bug bug, what happens if I ignore it and break?
+          break;
+          //return false;
         }
 
+        DBGPrintf("\t%u %u responseBuffer[0]:%u ==? %u\n", i, j, responseBuffer[0], ATT_OP_FIND_INFO_RESP);
         if (responseBuffer[0] == ATT_OP_FIND_INFO_RESP) {
           uint16_t lengthPerDescriptor = responseBuffer[1] * 4;
           uint8_t uuidLen = 2;
@@ -1755,7 +1880,7 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
                                                                       connectionHandle,
                                                                       rawDescriptor->handle);
 
-            Serial.printf("\t%u %u %u descriptor:%p\n", i, j, k, descriptor);
+            DBGPrintf("\t%u %u %u descriptor:%p\n", i, j, k, descriptor);
             if (descriptor == NULL) {
               return false;
             }
@@ -1770,7 +1895,7 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
       }
     }
   }
-
+#endif
   return true;
 }
 
@@ -1781,7 +1906,7 @@ int ATTClass::sendReq(uint16_t connectionHandle, void* requestBuffer, int reques
   _pendingResp.buffer = responseBuffer;
   _pendingResp.length = 0;
 
-  Serial.printf("ATTClass::sendReq(%u, %p(%x), %u, %p)\n", connectionHandle, requestBuffer, *((uint8_t*)requestBuffer), requestLength, responseBuffer);
+  DBGPrintf("ATTClass::sendReq(%u, %p(%x), %u, %p)\n", connectionHandle, requestBuffer, *((uint8_t*)requestBuffer), requestLength, responseBuffer);
   HCI.sendAclPkt(connectionHandle, ATT_CID, requestLength, requestBuffer);
 
   if (responseBuffer == NULL) {
@@ -1789,10 +1914,12 @@ int ATTClass::sendReq(uint16_t connectionHandle, void* requestBuffer, int reques
     return 0;
   } 
 
-  for (unsigned long start = millis(); (millis() - start) < _timeout;) {
+  unsigned long start;
+  for (start = millis(); (millis() - start) < _timeout;) {
     HCI.poll();
 
     if (!connected(connectionHandle)) {
+      DBGPrintf("\tNot Connected\n");
       break;
     }
 
@@ -1801,7 +1928,7 @@ int ATTClass::sendReq(uint16_t connectionHandle, void* requestBuffer, int reques
       return _pendingResp.length;
     }
   }
-
+  DBGPrintf("\tsendReq failed dt: %u\n", (millis() - start));
   _pendingResp.connectionHandle = 0xffff;
   return 0;
 }
