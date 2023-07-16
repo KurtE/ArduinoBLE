@@ -18,6 +18,7 @@
 */
 
 #if !defined(ARDUINO_ARCH_MBED) && !defined(ESP32) && !defined(ARDUINO_UNOR4_WIFI) || defined(TARGET_NANO_RP2040_CONNECT)
+#if !(defined(TEENSYDUINO) && (__IMXRT1062__) || (ARDUINO_TEENSY36))
 
 #include "HCIUartTransport.h"
 
@@ -29,6 +30,8 @@
 // SerialHCI is already defined in the variant
 #elif defined(ARDUINO_PORTENTA_H7_M7) || defined(ARDUINO_NICLA_VISION)
 #define SerialHCI Serial2
+#elif defined(ARDUINO_TEENSY_MICROMOD) || defined(ARDUINO_TEENSY41)
+#define SerialHCI Serial7 // this is wrong
 #elif defined(ARDUINO_PORTENTA_C33)
 #define SerialHCI Serial5
 #else
@@ -102,4 +105,5 @@ HCIUartTransportClass HCIUartTransport(SerialHCI, 912600);
 #endif
 HCITransportInterface& HCITransport = HCIUartTransport;
 
+#endif // teensy
 #endif

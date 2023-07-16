@@ -293,7 +293,7 @@ void L2CAPSignalingClass::handleSecurityData(uint16_t connectionHandle, uint8_t 
     } *identityAddress = (IdentityAddress*)data;
     // we can save this information now.
     uint8_t peerAddress[6];
-    for(int i; i<6; i++) peerAddress[5-i] = identityAddress->address[i];
+    for(int i=0; i<6; i++) peerAddress[5-i] = identityAddress->address[i];
 
     HCI.saveNewAddress(identityAddress->addressType, peerAddress, ATT.peerIRK, ATT.localIRK);
     if(HCI._storeLTK!=0){
