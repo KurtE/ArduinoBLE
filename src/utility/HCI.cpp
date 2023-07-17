@@ -288,9 +288,9 @@ int HCIClass::readLeBufferSize(uint16_t& pktLen, uint8_t& maxPkt)
 
     pktLen = leBufferSize->pktLen;
     _maxPkt = maxPkt = leBufferSize->maxPkt;
-#ifndef __AVR__
-    ATT.setMaxMtu(pktLen - 9); // max pkt len - ACL header size
-#endif    
+//#ifndef __AVR__
+//    ATT.setMaxMtu(pktLen - 9); // max pkt len - ACL header size
+//#endif    
 #ifdef _BLE_TRACE_
   Serial.print("\tpktlen: ");
   Serial.print(pktLen, DEC);
