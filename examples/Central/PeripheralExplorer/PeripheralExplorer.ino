@@ -17,7 +17,7 @@
 #include <ArduinoBLE.h>
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial);
 
   // begin initialization
@@ -124,6 +124,8 @@ uint32_t HexStroTInt(const char *sz) {
 
 
 const char *MapUUIDToName(const char *uuid_str) {
+// Only allow this on boards that have enough memory/storage  
+#if !defined(ARDUINO_AVR_UNO_WIFI_REV2)
   if (strlen(uuid_str) < 6) {
     uint32_t uuid_int = HexStroTInt(uuid_str);
     switch (uuid_int) {
@@ -650,6 +652,7 @@ const char *MapUUIDToName(const char *uuid_str) {
       case 0x2BF0: return "Battery Energy Status ";
     }
   }
+#endif
   return nullptr;
 }
 
