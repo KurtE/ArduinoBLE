@@ -198,7 +198,7 @@ bool HCITeensyTransportClass::claim(Device_t *dev, int type, const uint8_t *desc
 void HCITeensyTransportClass::disconnect()
 {
     USBHDBGSerial.printf("Bluetooth Disconnect");
-    // lets clear out any active connecitons
+    // lets clear out any active connections
 }
 
 void HCITeensyTransportClass::timer_event(USBDriverTimer *whichTimer)

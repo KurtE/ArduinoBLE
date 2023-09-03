@@ -200,7 +200,7 @@ const char *MapUUIDToName(const char *uuid_str) {
       case 0x2802: return "Include";
       case 0x2803: return "Characteristic";
 
-      // Desciptions:
+      // Descriptions:
       case 0x2900: return "Characteristic Extended Properties";
       case 0x2901: return "Characteristic User Description";
       case 0x2902: return "Client Characteristic Configuration";
