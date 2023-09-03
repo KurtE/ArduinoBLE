@@ -32,6 +32,8 @@
 #define SerialHCI Serial2
 #elif defined(ARDUINO_TEENSY_MICROMOD) || defined(ARDUINO_TEENSY41)
 #define SerialHCI Serial7 // this is wrong
+#elif defined(ARDUINO_OPTA)
+#define SerialHCI Serial3
 #elif defined(ARDUINO_PORTENTA_C33)
 #define SerialHCI Serial5
 #else
