@@ -16,8 +16,15 @@
 
 #include <ArduinoBLE.h>
 
+// Device name that we are looking for 
+//    "LED"
+//    "Xbox Wireless Controller"
+//    "Surface Arc Mouse"
+char device_name[80] = "LED";
+
+
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   while (!Serial);
 
   // begin initialization
@@ -49,9 +56,6 @@ void loop() {
     Serial.print(peripheral.advertisedServiceUuid());
     Serial.println();
 
-    // see if peripheral is a LED
-    static const char device_name[] = "Xbox Wireless Controller";
-    //static const char device_name[] = "Surface Arc Mouse";
     if (peripheral.localName() == device_name) {
       // stop scanning
       BLE.stopScan();
@@ -59,9 +63,22 @@ void loop() {
       explorerPeripheral(peripheral);
 
       // peripheral disconnected, we are done
-      while (1) {
-        // do nothing
+      // See if the user wants to search again
+      Serial.print("** Press any key to scan again: <optional device name> **");
+      int ch;
+      while ((ch = Serial.read()) == -1) {}
+      if (ch >= ' ') {
+        char *psz = device_name;
+        *psz++ = ch;
+        while (Serial.readBytes(psz, 1)) {
+          if (*psz < ' ') break;
+          psz++;
+        }
+        *psz = '\0';
       }
+      while (Serial.read() != -1) {}
+      // start scanning for peripherals
+      BLE.scan();
     }
   }
 }
