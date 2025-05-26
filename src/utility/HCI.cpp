@@ -289,7 +289,7 @@ int HCIClass::readLeBufferSize(uint16_t& pktLen, uint8_t& maxPkt)
     pktLen = leBufferSize->pktLen;
     _maxPkt = maxPkt = leBufferSize->maxPkt;
 
-#ifndef __AVR__
+#if 0 // ndef __AVR__
     ATT.setMaxMtu(pktLen - 9); // max pkt len - ACL header size
 #endif
   }

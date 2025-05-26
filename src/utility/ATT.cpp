@@ -1712,13 +1712,117 @@ bool ATTClass::discoverCharacteristics(uint16_t connectionHandle, BLERemoteDevic
 
 bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* device)
 {
+  printk("ATTClass::discoverDescriptors(%u, %p)\n", connectionHandle, device);
   uint16_t reqStartHandle = 0x0001;
   uint16_t reqEndHandle = 0xffff;
 
   uint8_t responseBuffer[_maxMtu];
 
   int serviceCount = device->serviceCount();  
+  printk("\tService Count:%u\n", serviceCount);
+  #if 1
+  // Lets print out the information we know:
+  printk("****************** Service characteristic list ******************\n");
+  for (int i = 0; i < serviceCount; i++) {
+    BLERemoteService* service = device->service(i);
+    printk("Service(%u): UUID: %s Handle Range: %02x %02x\n", i, service->uuid(), 
+          service->startHandle(), service->endHandle());
+    int characteristicCount = service->characteristicCount();
 
+    for (int j = 0; j < characteristicCount; j++) {
+      BLERemoteCharacteristic* characteristic = service->characteristic(j);
+      printk("\tcharacteristic(%u): UUID: %s Handle Range: %02x %02x\n", j, characteristic->uuid(), 
+            characteristic->startHandle(), characteristic->valueHandle());
+    }
+  }
+  printk("****************** end ******************\n");
+
+
+  #endif
+
+#if 1
+  // lets try to simple do one while (1) loop for all of the attributes within the range of the service
+  for (int i = 0; i < serviceCount; i++) {
+    BLERemoteService* service = device->service(i);
+
+    if (service == nullptr) {
+      printk("$$$ discoverDescriptors: %i service is NULL\n", i);
+      continue;      
+    }
+
+    reqStartHandle =service->startHandle() + 1;
+    reqEndHandle =  service->endHandle();
+    int characteristicCount = service->characteristicCount();
+    if (characteristicCount == 0) continue; // this service does not have any
+    int characteristicindex = 1;  
+
+    BLERemoteCharacteristic* characteristic = service->characteristic(0);
+    BLERemoteCharacteristic* nextCharacteristic = (characteristicCount == 1) ? NULL : service->characteristic(1);
+    uint16_t nextCharacteristic_starting_handle = nextCharacteristic ? nextCharacteristic->startHandle() : reqEndHandle + 1;
+
+    while (reqStartHandle <= reqEndHandle) {
+
+        int respLength = findInfoReq(connectionHandle, reqStartHandle, reqEndHandle, responseBuffer);
+
+        printk("\t%u  respLength:%u\n", i, respLength);
+        if (respLength == 0) {
+          // bug bug, what happens if I ignore it and break?
+          break;
+          //return false;
+        }
+
+        printk("\t%u responseBuffer[0]:%u ==? %u\n", i, responseBuffer[0], ATT_OP_FIND_INFO_RESP);
+        if (responseBuffer[0] == ATT_OP_FIND_INFO_RESP) {
+          //
+          // Format parameter (responseBuffer[1]) either 0x01 - 16-bit Bluetooth UUID(s), or 0x02 - 128 bit UUID(s)
+          //
+          // Therefore for:
+          //   0x01 - uuidLen = 2 (octets)
+          //          lengthPerDescriptor = 4 (Handle 2 octets + UUID 2 octets)
+          //   0x02 - uuidLen = 16 (octets)
+          //          lengthPerDescriptor = 18 (Handle 2 octets + UUID 16 octets)
+          //
+          // See section 3.4.3.2 ATT_FIND_INFORMATION_RSP of Bluetooth Core Specification 5.3.
+          //
+          uint8_t uuidLen = responseBuffer[1] == 1 ? 2 : 16;
+          uint16_t lengthPerDescriptor = uuidLen + 2;
+
+          for (int k = 2; k < respLength; k += lengthPerDescriptor) {
+            struct __attribute__ ((packed)) RawDescriptor {
+              uint16_t handle;
+              uint8_t uuid[16];
+            } *rawDescriptor = (RawDescriptor*)&responseBuffer[k];
+
+            BLERemoteDescriptor* descriptor = new BLERemoteDescriptor(rawDescriptor->uuid, uuidLen,
+                                                                      connectionHandle,
+                                                                      rawDescriptor->handle);
+
+            printk("\t%u %u handle:%02x descriptor:%p\n", i, k, rawDescriptor->handle, descriptor);
+            if (descriptor == NULL) {
+              return false;
+            }
+
+            // Now make sure we add this to the right characteristic
+            while (rawDescriptor->handle >= nextCharacteristic_starting_handle) {
+              if (nextCharacteristic == nullptr) return false; // should not happen
+              printk("\t%02x >= %02x - advance to next characteristic %u\n", rawDescriptor->handle, nextCharacteristic_starting_handle, characteristicindex);
+              characteristicindex++;
+              characteristic = nextCharacteristic;
+              nextCharacteristic = (characteristicindex >= characteristicCount) ? NULL : service->characteristic(characteristicindex);
+              if (nextCharacteristic) nextCharacteristic_starting_handle = nextCharacteristic->startHandle();
+              else nextCharacteristic_starting_handle = (reqEndHandle != 0xffff)? reqEndHandle + 1 : 0xffff;
+            }
+
+            characteristic->addDescriptor(descriptor);
+
+            reqStartHandle = rawDescriptor->handle + 1;
+          }
+        } else {
+          break;
+        }
+      }
+    }
+#else  
   for (int i = 0; i < serviceCount; i++) {
     BLERemoteService* service = device->service(i);
 
@@ -1726,6 +1830,7 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
 
     int characteristicCount = service->characteristicCount();
 
+    printk("\t%u Service: %s #characteristic:%u\n", i, service->uuid(), characteristicCount);
     for (int j = 0; j < characteristicCount; j++) {
       BLERemoteCharacteristic* characteristic = service->characteristic(j);
       BLERemoteCharacteristic* nextCharacteristic = (j == (characteristicCount - 1)) ? NULL : service->characteristic(j + 1);
@@ -1733,6 +1838,8 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
       reqStartHandle = characteristic->valueHandle() + 1;
       reqEndHandle = nextCharacteristic ? nextCharacteristic->valueHandle() : serviceEndHandle;
 
+      printk("\t(%d, %d) characteristic: %s %p, range: %u %u\n", i, j, characteristic->uuid(), nextCharacteristic, reqStartHandle, reqEndHandle);
+  
       if (reqStartHandle > reqEndHandle) {
         continue;
       }
@@ -1740,24 +1847,29 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
       while (1) {
         int respLength = findInfoReq(connectionHandle, reqStartHandle, reqEndHandle, responseBuffer);
 
+        printk("\t%u %u respLength:%u\n", i, j, respLength);
         if (respLength == 0) {
-          return false;
+          // bug bug, what happens if I ignore it and break?
+          break;
+          //return false;
         }
 
+        printk("\t%u %u responseBuffer[0]:%u ==? %u\n", i, j, responseBuffer[0], ATT_OP_FIND_INFO_RESP);
         if (responseBuffer[0] == ATT_OP_FIND_INFO_RESP) {
           uint16_t lengthPerDescriptor = responseBuffer[1] * 4;
           uint8_t uuidLen = 2;
 
-          for (int i = 2; i < respLength; i += lengthPerDescriptor) {
+          for (int k = 2; k < respLength; k += lengthPerDescriptor) {
             struct __attribute__ ((packed)) RawDescriptor {
               uint16_t handle;
               uint8_t uuid[16];
-            } *rawDescriptor = (RawDescriptor*)&responseBuffer[i];
+            } *rawDescriptor = (RawDescriptor*)&responseBuffer[k];
 
             BLERemoteDescriptor* descriptor = new BLERemoteDescriptor(rawDescriptor->uuid, uuidLen,
                                                                       connectionHandle,
                                                                       rawDescriptor->handle);
 
+            printk("\t%u %u %u descriptor:%p\n", i, j, k, descriptor);
             if (descriptor == NULL) {
               return false;
             }
@@ -1772,7 +1884,7 @@ bool ATTClass::discoverDescriptors(uint16_t connectionHandle, BLERemoteDevice* d
       }
     }
   }
-
+#endif
   return true;
 }
 
